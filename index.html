@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>World Map</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        .country {
+            stroke: lightblue;
+            stroke-width: 0.75px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map-container"></div>
+    <script>
+        const svg = d3.select("#map-container")
+            .append("svg")
+            .attr("width", 1000)
+            .attr("height", 400);
+
+        // URL of the GeoJSON file
+        const geojsonUrl = "https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/natural-earth-countries-1_110m@public/exports/geojson?lang=en&timezone=Europe%2FBerlin";
+        const worldDataUrl = "https://raw.githubusercontent.com/lucasjellema/worldmap-visualization-part-two/main/world-data-2023.csv"
+        let geojsonCountryData
+        const parseCSV = (csvString) => {
+            return new Promise((resolve, reject) => {
+                Papa.parse(csvString, {
+                    complete: results => resolve(results.data),
+                    error: error => reject(error),
+                    header: true // if your CSV has headers; set to false otherwise
+                });
+            });
+        }
+
+        Promise.all([
+            d3.json(geojsonUrl),
+            fetch(worldDataUrl).then(response => response.text().then(csvString => parseCSV(csvString)))
+        ])
+            .then(([geojsonData, worldDataRecords]) => {
+                // Both promises have resolved
+                // geojsonData is the result of d3.json
+                // worldDataRecords is the result of fetch and papa parse
+                // bring data from worldDataRecords and geojsonData together
+                const countryDataMap = {}
+                for (const country of worldDataRecords) {
+                    countryDataMap[country.Abbreviation] = country
+                    countryDataMap[country.Country] = country
+                }
+                geojsonData.features.forEach((d) => {
+                    // using the ISo2 country code (iso_a2), check heatmapData array for an object with the right COUnTRY property value
+                    const countryCode = d.properties.iso_a2;
+                    const countryName = d.properties.name;
+                    const country = countryDataMap[countryCode] || countryDataMap[countryName]
+                    if (country) {
+                        // copy properties from country record to d.properties
+                        for (let key in country ) {
+                            if (key !== 'Country') {
+                                d.properties[key] = country[key];
+                            }
+                        }
+                    }
+                })
+                geojsonCountryData = geojsonData
+                let projection = d3.geoEquirectangular(); // decide on the projection to use for turning Long/Lat into X,Y
+                let geoGenerator = d3.geoPath()
+                    .projection(projection); // a function to turn the GeoJSON (long/lat) features property into SVG (X,Y) path definition  
+
+                svg
+                    .selectAll('path')
+                    .data(geojsonData.features)
+                    .join('path')
+                    .attr('d', geoGenerator)
+                    .attr('class', 'country')
+                    .append('title')
+                    .text(
+                        (d) => `${d.properties.name}`)
+
+                displayProperty("Birth Rate")
+
+
+            })
+            .catch(error => {
+                // Handle errors here
+                console.error('An error occurred:', error);
+            });
+
+        const displayProperty = (property) => {
+            // find the domain for this property
+            const propertyDomain = d3.extent(geojsonCountryData.features, (d) => parseFloat(d.properties[property]))
+            console.log(JSON.stringify(propertyDomain))
+            const colorScale = d3.scaleSequential(d3.interpolateBlues).domain(propertyDomain)
+
+            let mapNodes = svg
+                .selectAll('path')
+                .data(geojsonCountryData.features)
+                .style('fill', (d) => colorScale(parseFloat(d.properties[property])))
+                .attr('class', 'country')
+                .select('title')
+                .text(
+                    (d) => `${d.properties.name} (${property}: ${d.properties[property]})`)
+        }
+        
+        
+    </script>
+
+    <h3>Select property to display in world map</h3>
+    <select id="dataOptions" name="dataOptions" onchange="displayProperty(this.value)">>
+        <option value="Birth Rate">Birth Rate</option>
+        <option value="Agricultural Land( %)">Agricultural Land (%)</option>
+        <option value="Land Area(Km2)">Land Area (Km²)</option>
+        <option value="Armed Forces size">Armed Forces Size</option>
+        <option value="Co2-Emissions">CO2 Emissions</option>
+        <option value="CPI">Consumer Price Index (CPI)</option>
+        <option value="Fertility Rate">Fertility Rate</option>
+        <option value="Forested Area (%)">Forested Area (%)</option>
+        <option value="Gasoline Price">Gasoline Price</option>
+        <option value="GDP">GDP</option>
+        <option value="Gross primary education enrollment (%)">Gross Primary Education Enrollment (%)</option>
+        <option value="Gross tertiary education enrollment (%)">Gross Tertiary Education Enrollment (%)</option>
+        <option value="Infant mortality">Infant Mortality</option>
+        <option value="Life expectancy">Life Expectancy</option>
+        <option value="Maternal mortality ratio">Maternal Mortality Ratio</option>
+        <option value="Minimum wage">Minimum Wage</option>
+        <option value="Out of pocket health expenditure">Out of Pocket Health Expenditure</option>
+        <option value="Physicians per thousand">Physicians per Thousand</option>
+        <option value="Population">Population</option>
+        <option value="Population: Labor force participation (%)">Population: Labor Force Participation (%)</option>
+        <option value="Tax revenue (%)">Tax Revenue (%)</option>
+        <option value="Total tax rate">Total Tax Rate</option>
+        <option value="Unemployment rate">Unemployment Rate</option>
+        <option value="Urban_population">Urban Population</option>
+    </select>
+
+</body>
+
+</html>
